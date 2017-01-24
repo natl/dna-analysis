@@ -7,6 +7,11 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import pdb
+import matplotlib as mpl
+
+mpl.rc("axes", titlesize=9, labelsize=8)
+mpl.rc("legend", fontsize=8)
+
 
 typeDict = {"Char_t": 'S16', 'Double_t': 'f8', 'Int_t': 'i8'}
 
@@ -135,56 +140,6 @@ def get_damage_summary(rootfile):
     output["FragmentHisto"] = (fragment_bins, fragments)
     return output
 
-def print_summary():
-    files = [("e-", 300, "6A", 17.5, 17.5, "direct_electrons/cyl_e_300ev.root"),  # NOQA
-             ("e-", 1000, "6A", 17.5, 17.5, "direct_electrons/cyl_e_1000ev.root"),  # NOQA
-            #  ("e-", 3000, "6A", 17.5, 17.5, "direct_electrons/cyl_e_3000ev.root"),  # NOQA
-             ("e-", 4500, "6A", 17.5, 17.5, "direct_electrons/cyl_e_4500ev.root"),  # NOQA
-             ("e-", 300, "5A", 17.5, 17.5, "direct_electrons/cyl_e_300ev_n10M_r5A.root"),  # NOQA
-             ("e-", 300, "6A", 17.5, 17.5, "direct_electrons/cyl_e_300ev_n10M_r6A.root"),  # NOQA
-             ("e-", 300, "7A", 17.5, 17.5, "direct_electrons/cyl_e_300ev_n10M_r7A.root"),  # NOQA
-             ("proton", 4500, "6A", 17.5, 17.5, "direct_protons/cyl_p_4500ev.root"),  # NOQA
-             ("proton", 10000, "6A", 17.5, 17.5, "direct_protons/cyl_p_10kev.root"),  # NOQA
-             ("proton", 15000, "6A", 17.5, 17.5, "direct_protons/cyl_p_15kev.root"),  # NOQA
-             ("proton", 20000, "6A", 17.5, 17.5, "direct_protons/cyl_p_20kev.root"),  # NOQA
-             ("proton", 4500, "4A", 17.5, 17.5, "direct_radius/cyl4A.root"),
-             ("proton", 4500, "5A", 17.5, 17.5, "direct_radius/cyl5A.root"),
-             ("proton", 4500, "6A", 17.5, 17.5, "direct_radius/cyl6A.root"),
-             ("proton", 4500, "7A", 17.5, 17.5, "direct_radius/cyl7A.root"),
-             ("proton", 4500, "8A", 17.5, 17.5, "direct_radius/cyl8A.root"),
-             ("proton", 4500, "9A", 17.5, 17.5, "direct_radius/cyl9A.root"),
-             ("proton", 4500, "6A", 8.22, 8.22, "direct_energy/cyl8eV.root"),
-             ("proton", 4500, "6A", 11.0, 11.0, "direct_energy/cyl11eV.root"),
-             ("proton", 4500, "6A", 14.0, 14.0, "direct_energy/cyl14eV.root"),
-             ("proton", 4500, "6A", 17.5, 17.5, "direct_energy/cyl17eV.root"),
-             ("proton", 4500, "6A", 20.0, 20.0, "direct_energy/cyl20eV.root"),
-             ("proton", 4500, "6A", 24.0, 24.0, "direct_energy/cyl24eV.root"),
-             ("proton", 4500, "6A", 5.00, 38.0, "direct_energy/cylPARTRAC.root")]  # NOQA
-
-    analysed = []
-    classifications = ["None", "SSB", "SSB+", "2SSB", "DSB", "DSB+", "DSB++"]
-    for f in files:
-        classified = {key: 0 for key in classifications}
-        damage = load_tuple_to_array(f[5], "damage", "tuples")
-        for val in damage["Classification"]:
-            for key in classified.keys():
-                if val == key:
-                    classified[key] += 1
-        analysed.append( (f, classified) )
-
-    print("Primary  En (eV)  Rad  E1 (eV)  E2 (eV)  None   SSB  SSB+  2SSB   DSB  DSB+  DSB++  SSB/DSB")  # NOQA
-    print("-------------------------------------------------------------------------------------------")  # NOQA
-    for line in analysed:
-        f = line[0]
-        cl = line[1]
-        ndsb = float(cl["DSB"] + cl["DSB+"] + cl["DSB++"])
-        nssb = float(cl["SSB"] + cl["2SSB"] + cl["SSB+"])
-        if ndsb == 0:
-            ndsb = -1
-        ratio = nssb/ndsb
-        print("{0[0]:7s}  {0[1]:7d}  {0[2]:3s}  {0[3]:7.2f}  {0[4]:7.2f}  {1[None]:4d}  {1[SSB]:4d}  {1[SSB+]:4d}  {1[2SSB]:4d}  {1[DSB]:4d}  {1[DSB+]:4d}   {1[DSB++]:4d}  {2:7.4f}".format(f, cl, ratio))  # NOQA
-    return analysed
-
 
 def get_parameters(indices, directory):
     """Get input parameters for a given list of indices
@@ -201,7 +156,7 @@ def get_parameters(indices, directory):
     return tab[tab.FILENUM.isin(indices)]
 
 
-def do_damage_distance_graph(indices, directory):
+def do_damage_distance_graph(indices, directory, outfile):
     """Make a graph of Indirect Damage
     """
     assert os.path.exists("figs"), "Please make a directory called figs to" +\
@@ -218,38 +173,131 @@ def do_damage_distance_graph(indices, directory):
     fig = plt.figure(figsize=[3, 2])
     ax = fig.add_subplot(111)
     ax.set_xlabel("Distance (nm)")
-    ax.set_ylabel("Indirect Breaks")
-    # ax.plot(x, ssb, "r-", label="SSBs")
-    ax.plot(x, dsb, "b--", label="DSBs")
+    ax.set_ylabel("Relative Indirect Breaks")
+    ssb = np.asarray(ssb)
+    dsb = np.asarray(dsb)
+    ax.plot(x, ssb/max(ssb), "r-", label="SSBs")
+    ax.plot(x, dsb/max(dsb), "b--", label="DSBs")
     ax.legend(frameon=False, loc="upper left")
-    fig.savefig("figs/{}-damage-distance.pdf".format(directory),
-                bbox_inches="tight")
+    fig.savefig(outfile, bbox_inches="tight")
+    with open(outfile + ".log", 'w') as f:
+        f.write("Max DSB: {}; Max SSB: {}".format(max(dsb), max(ssb)))
     return None
 
 
+def make_damage_table(indices, directory):
+    """Make a graph of Indirect Damage
+    """
+    assert os.path.exists("figs"), "Please make a directory called figs to" +\
+        " save the figure"
+    params = get_parameters(indices, directory)
+    # vals = [(n, ein, primary, events*ein, d, elow, ehigh, physics,
+    #          get_damage_summary(os.path.join(directory,"{}.root".format(n))))
+    #          for (n, ein, primary, d, events, elow, ehigh, physics) in
+    #          zip(params.FILENUM, params.EN_EV, params.PRIMARY,
+    #              params.DMG_DIST, params.EVENTS,
+    #              params.DMG_EN_LOW, params.DMG_EN_HIGH, params.PHYSICS)]
+    dmgs = [get_damage_summary(os.path.join(directory,"{}.root".format(n)))
+            for n in params.FILENUM]
+    valdict = OrderedDict([("FILENUM", [n for n in params.FILENUM])])
+    valdict["SSB/DSB"] =\
+        [dmg["SSB/DSB"] for dmg in dmgs]
+    valdict["IndirectDSB/TotalDSB"] =\
+        [dmg["IndirectDSB/TotalDSB"] for dmg in dmgs]
+    valdict["Indirect/Total"] =\
+        [dmg["Indirect/Total"] for dmg in dmgs]
+    # valdict["FragmentHisto"] =\
+    #     [dmg["FragmentHisto"] for dmg in dmgs]
+    valdict["BaseDamage"] =\
+        [dmg["BaseDamage"] for dmg in dmgs]
+    valdict["StrandDamage"] =\
+        [dmg["StrandDamage"] for dmg in dmgs]
+    valdict["IndirectHits"] =\
+        [dmg["IndirectHits"] for dmg in dmgs]
+    valdict["DirectHits"] =\
+        [dmg["DirectHits"] for dmg in dmgs]
+    for key in dmgs[0]["Source"].keys():
+        valdict[key] = [dmg["Source"][key] for dmg in dmgs]
+    for key in dmgs[0]["Complexity"].keys():
+        valdict[key] = [dmg["Complexity"][key] for dmg in dmgs]
+    for key in dmgs[0]["IndirectEvents"].keys():
+        valdict[key] = [dmg["IndirectEvents"][key] for dmg in dmgs]
+    df = pd.DataFrame(valdict)
+
+    table = pd.merge(params, df, how="inner", on="FILENUM")
+    return table
+
+
+def save_damage_table(indices, directory, output):
+    """Save a damage table
+    """
+    table = make_damage_table(indices, directory)
+    table.to_csv(outfile)
+    return None
+
+
+def output_direct_damage(indices, directory, output):
+    """Prepare formatted output of direct damage
+    """
+    table = make_damage_table(indices, directory)
+    table = table[table["CHEM"] == False]
+    phys4 = table[table["PHYSICS"] == 4]
+    phys0 = table[table["PHYSICS"] == 0]
+    columns = ["PRIMARY", "EN_EV", "EVENTS", "DMG_DIST", "DMG_EN_LOW",
+               "DMG_EN_HIGH", "None", "SSB", "SSB+", "2SSB", "DSB", "DSB+",
+               "DSB++", "SSB/DSB"]
+
+    l1 = "Primary   E (eV) N       Rad  E1(eV) E2(eV) None   SSB   SSB+   2SSB    DSB   DSB+   DSB++   SSB/DSB"
+    l2 = "----------------------------------------------------------------------------------------------------"
+    for tab, txt in [[phys4, "Physics4"], [phys0, "Physics0"]]:
+        print(txt)
+        for rad in [3, 4, 5, 6, 7, 8, 9]:
+            print(l1, "\n", l2)
+            for elow in [12.6, 15.0, 17.5, 21.1, 30.0, 5.0]:
+                for ein in [300, 500, 1000, 3000, 4500]:
+                    row = tab[(tab["EN_EV"] == ein) &
+                              (tab["DMG_DIST"] == rad) &
+                              (tab["DMG_EN_LOW"] == elow)]
+                    if len(row) > 0:
+                        vals = [row.loc[row.index[0]][col] for col in columns]
+                        valsfmt = [str(v) if type(v) != np.float64 else "{:>6.2f}".format(v) for v in vals]
+                        valsfmt = ["{:>6}".format(v) if len(v) < 6 else v for v in valsfmt]
+                        # pdb.set_trace()
+                        try:
+                            print(" ".join(valsfmt))
+                        except:
+                            pdb.set_trace()
+                            print(row, file=sys.stderr)
+
+    return None
 
 def print_usage():
-    print("""python analysis.py [-h] directory --method indices
+    print("""python analysis.py [-h] directory --method --indices indices
     -h print this help message
 
 Example usage:
-    python analysis.py cylinders --indirect-range 1000-1030 1111
+    python analysis.py dir --indirect-range out.pdf --indices 1000-1030 1111
         Run the indirect-range method, for root files in the cyliners directory
         with file numbers in the range [1000, 1030) and also number 1111
         Files do not need to exist
 
 Warning:
-    Figures are created in a directory called "./figs". This script will
-    overwrite existing figures that have the same filename as that being
-    saved.
+    Created files will overwrite existing Files
+
 
 Available Methods:
-    --indirect-range: Make a figure
+    --indirect-range fname: Make a figure of kill distance w. SSBs/DSBs
+    --data-table fname: Make a data table of damage data
 """)
     return None
 
 if __name__ == "__main__":
+    available_methods = ["--indirect-range", "--data-table", "--direct-damage"]
     if "-h" in sys.argv:
+        print_usage()
+        sys.exit()
+    if "--indices" not in sys.argv:
+        print("No indices specified")
         print_usage()
         sys.exit()
     directory = sys.argv[1]
@@ -257,14 +305,34 @@ if __name__ == "__main__":
         print("Invalid directory name")
         print_usage()
         sys.exit()
-    if "--indirect-range" in sys.argv:
-        start_idx = sys.argv.index("--indirect-range") + 1
-        ranges = []
-        for val in sys.argv[start_idx:]:
-            if "-" not in val:
-                ranges.append(int(val))
-            else:
-                [mn, mx] = val.split("-")
-                for ii in range(int(mn), int(mx)):
-                    ranges.append(ii)
-        do_damage_distance_graph(ranges, directory)
+    method = sys.argv[2]
+    if method not in available_methods:
+        print("Invalid method specified")
+        print_usage()
+        sys.exit()
+    start_idx = sys.argv.index("--indices") + 1
+    ranges = []
+    for val in sys.argv[start_idx:]:
+        if "-" not in val:
+            ranges.append(int(val))
+        else:
+            [mn, mx] = val.split("-")
+            for ii in range(int(mn), int(mx)):
+                ranges.append(ii)
+    outfile = sys.argv[3]
+    if outfile == "--indices":
+        print("No destination file set")
+        print_usage()
+        sys.exit()
+    if method == "--indirect-range":
+        do_damage_distance_graph(ranges, directory, outfile)
+        sys.exit()
+    elif method == "--data-table":
+        save_damage_table(ranges, directory, outfile)
+        sys.exit()
+    elif method == "--direct-damage":
+        output_direct_damage(ranges, directory, outfile)
+        sys.exit()
+    else:
+        print("Method not implemented")
+        sys.exit()
