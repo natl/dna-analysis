@@ -66,7 +66,7 @@ def get_damage_summary(rootfile):
                               ("2SSB", 0), ("DSB", 0), ("DSB+", 0),
                               ("DSB++", 0)])
     source = OrderedDict([("None", 0), ("SSBi", 0), ("SSBd", 0), ("SSBm", 0),
-                          ("DSBi", 0), ("DSBd", 0), ("DSBm", 0)])
+                          ("DSBi", 0), ("DSBd", 0), ("DSBm", 0), ("DSBh", 0)])
     indirect_events = OrderedDict([("base_oh", 0), ("base_eaq", 0),
                                    ("base_h", 0), ("strand_oh", 0),
                                    ("strand_eaq", 0), ("strand_h", 0),])
