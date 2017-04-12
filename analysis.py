@@ -70,21 +70,70 @@ def get_damage_summary(rootfile):
     indirect_events = OrderedDict([("base_oh", 0), ("base_eaq", 0),
                                    ("base_h", 0), ("strand_oh", 0),
                                    ("strand_eaq", 0), ("strand_h", 0),])
+    energy_depos = OrderedDict([("0", 0), ("0-60", 0), ("60-150", 0),
+                                ("150+", 0)])
+    energy_dsbs = OrderedDict([("0", 0), ("0-60", 0), ("60-150", 0),
+                                ("150+", 0)])
     output = OrderedDict([("Complexity", complexity),
                           ("Source", source),
                           ("IndirectEvents", indirect_events),
+                          ("EnergyDepos", energy_depos),
+                          ("EnergyDSBs", energy_dsbs),
                           ("SSB/DSB", 0),
                           ("IndirectDSB/TotalDSB", 0),
                           ("Indirect/Total", 0),
                           ("FragmentHisto", None),
                           ("BaseDamage", 0),
                           ("StrandDamage", 0),
-                          ("IndirectHits", 0),
-                          ("DirectHits", 0)])
+                          ("IndirectBreaks", 0),
+                          ("DirectBreaks", 0),
+                          ("AvgSSBStrandBreaks", 0),
+                          ("AvgDSBStrandBreaks", 0)])
+    ssb_hits = 0
+    ssb_hits_n = 0
+    dsb_hits = 0
+    dsb_hits_n = 0
 
     # read the tuple, fill the output dictionary
     # could probably do this more elegantly
     root_tuple = load_tuple_to_array(rootfile, "damage", "tuples")
+
+    if "DirectBreaks" in root_tuple.dtype.fields:
+        for row in root_tuple:
+            if "DSB" in row["TypeClassification"]:
+                dsb_hits += row["DirectBreaks"] + row["IndirectBreaks"]
+                dsb_hits_n += 1
+            elif "SSB" in row["TypeClassification"]:
+                ssb_hits += row["DirectBreaks"] + row["IndirectBreaks"]
+                ssb_hits_n += 1
+            if ssb_hits_n > 0:
+                output["AvgSSBStrandBreaks"] = float(ssb_hits)/ssb_hits_n
+            if dsb_hits_n > 0:
+                output["AvgDSBStrandBreaks"] = float(dsb_hits)/dsb_hits_n
+
+    print(output["AvgSSBStrandBreaks"], output["AvgDSBStrandBreaks"])
+
+    for row in root_tuple:
+        try:
+            if row["EnergyDeposited_eV"] == 0:
+                energy_depos["0"] += 1
+                if "DSB" in row["TypeClassification"]:
+                    energy_dsbs["0"] += 1
+            elif row["EnergyDeposited_eV"] < 60:
+                energy_depos["0-60"] += 1
+                if "DSB" in row["TypeClassification"]:
+                    energy_dsbs["0-60"] += 1
+            elif row["EnergyDeposited_eV"] < 150:
+                energy_depos["60-150"] += 1
+                if "DSB" in row["TypeClassification"]:
+                    energy_dsbs["60-150"] += 1
+            else:
+                energy_depos["150+"] += 1
+                if "DSB" in row["TypeClassification"]:
+                    energy_dsbs["150+"] += 1
+        except:
+            pass
+
     if "TypeClassification" in root_tuple.dtype.fields:
         for val in root_tuple["TypeClassification"]:
             for key in output["Complexity"].keys():
@@ -110,13 +159,13 @@ def get_damage_summary(rootfile):
         for val in root_tuple["HStrandHits"]:
             output["IndirectEvents"]["strand_h"] += val
 
-    if "IndirectHits" in root_tuple.dtype.fields:
-        for val in root_tuple["IndirectHits"]:
-            output["IndirectHits"] += val
+    if "DirectBreaks" in root_tuple.dtype.fields:
+        for val in root_tuple["DirectBreaks"]:
+            output["DirectBreaks"] += val
 
-    if "DirectHits" in root_tuple.dtype.fields:
-        for val in root_tuple["DirectHits"]:
-            output["DirectHits"] += val
+    if "IndirectBreaks" in root_tuple.dtype.fields:
+        for val in root_tuple["IndirectBreaks"]:
+            output["IndirectBreaks"] += val
 
     if "BaseDamage" in root_tuple.dtype.fields:
         for val in root_tuple["BaseDamage"]:
@@ -216,12 +265,20 @@ def make_damage_table(indices, directory):
         [dmg["IndirectHits"] for dmg in dmgs]
     valdict["DirectHits"] =\
         [dmg["DirectHits"] for dmg in dmgs]
+    valdict["AvgSSBStrandBreaks"] =\
+        [dmg["AvgSSBStrandBreaks"] for dmg in dmgs]
+    valdict["AvgDSBStrandBreaks"] =\
+        [dmg["AvgDSBStrandBreaks"] for dmg in dmgs]
     for key in dmgs[0]["Source"].keys():
         valdict[key] = [dmg["Source"][key] for dmg in dmgs]
     for key in dmgs[0]["Complexity"].keys():
         valdict[key] = [dmg["Complexity"][key] for dmg in dmgs]
     for key in dmgs[0]["IndirectEvents"].keys():
         valdict[key] = [dmg["IndirectEvents"][key] for dmg in dmgs]
+    for key in dmgs[0]["EnergyDepos"].keys():
+        valdict["Energy_" + key] = [dmg["EnergyDepos"][key] for dmg in dmgs]
+    for key in dmgs[0]["EnergyDSBs"].keys():
+        valdict["DSB_" + key] = [dmg["EnergyDSBs"][key] for dmg in dmgs]
     df = pd.DataFrame(valdict)
 
     table = pd.merge(params, df, how="inner", on="FILENUM")
@@ -271,6 +328,77 @@ def output_direct_damage(indices, directory, output):
 
     return None
 
+
+def ecoli_table(directory):
+    """
+    Do analysis for an E. coli directory
+    """
+    filenames = os.listdir(directory)
+    ecoli_results = []
+    for filename in filenames:
+        if filename[-5:] == ".root" and filename[:6] == "ecoli_":
+            vals = filename[:-5].split("_")
+            en = vals[1].lower()
+            if "mev" in en:
+                en = float(en[:-3])*1e6
+            else:
+                en = float(en[:-3])*1e3
+            n = int(vals[2][:-1]) * 1000
+            hydration = True if "1nm" in vals else False
+            for val in vals:
+                if "strand" in val:
+                    nstrands = int(val[0])
+                else:
+                    nstrands = 4
+            if "proton" in vals:
+                primary = "proton"
+            else:
+                primary = "e-"
+            fdata = OrderedDict([('filename', filename),
+                                 ('ein', en),
+                                 ('primary', primary),
+                                 ('hydration', hydration),
+                                 ('events', n),
+                                 ('nstrands', nstrands),
+                                 ('partrac', 'partrac' in vals)])
+            chits = load_tuple_to_array(os.path.join(directory, filename),
+                                        "chromosome_hits",
+                                        directory="tuples")
+            fdata["edna"] = sum(chits["e_dna_kev"])*1000
+            fdata["echromosome"] = sum(chits["e_chromosome_kev"])*1000
+            dmg = get_damage_summary(os.path.join(directory, filename))
+
+            fdata["SSB/DSB"] = dmg["SSB/DSB"]
+            fdata["IndirectDSB/TotalDSB"] = dmg["IndirectDSB/TotalDSB"]
+            fdata["Indirect/Total"] = dmg["Indirect/Total"]
+            ok = np.where(dmg["FragmentHisto"] > 21)[0]
+            fdata["FragmentMean"] = np.mean(dmg["FragmentHisto"][ok])
+            fdata["FragmentStd"] = np.std(dmg["FragmentHisto"][ok])
+            fdata["BaseDamage"] = dmg["BaseDamage"]
+            fdata["StrandDamage"] = dmg["StrandDamage"]
+            fdata["IndirectBreaks"] = dmg["IndirectBreaks"]
+            fdata["DirectBreaks"] = dmg["DirectBreaks"]
+            fdata["AvgSSBStrandBreaks"] = dmg["AvgSSBStrandBreaks"]
+            fdata["AvgDSBStrandBreaks"] = dmg["AvgDSBStrandBreaks"]
+            for key in dmg["Source"].keys():
+                fdata[key] = dmg["Source"][key]
+            for key in dmg["Complexity"].keys():
+                fdata[key] = dmg["Complexity"][key]
+            for key in dmg["IndirectEvents"].keys():
+                fdata[key] = dmg["IndirectEvents"][key]
+            for key in dmg["EnergyDepos"].keys():
+                fdata["Energy_" + key] = dmg["EnergyDepos"][key]
+            for key in dmg["EnergyDSBs"].keys():
+                fdata["DSB_" + key] = dmg["EnergyDSBs"][key]
+            ecoli_results.append(fdata)
+    ecoli_dict = OrderedDict([(k, []) for k in ecoli_results[0].keys()])
+    for result in ecoli_results:
+        for k, v in result.items():
+            ecoli_dict[k].append(v)
+    df = pd.DataFrame(ecoli_dict)
+    return df
+
+
 def print_usage():
     print("""python analysis.py [-h] directory --method --indices indices
     -h print this help message
@@ -288,15 +416,17 @@ Warning:
 Available Methods:
     --indirect-range fname: Make a figure of kill distance w. SSBs/DSBs
     --data-table fname: Make a data table of damage data
+    --ecoli fname: analyses eveything in an ecoli results dir., saves to csv
 """)
     return None
 
 if __name__ == "__main__":
-    available_methods = ["--indirect-range", "--data-table", "--direct-damage"]
+    available_methods = ["--indirect-range", "--data-table", "--direct-damage",
+                         "--ecoli"]
     if "-h" in sys.argv:
         print_usage()
         sys.exit()
-    if "--indices" not in sys.argv:
+    if ("--indices" not in sys.argv) and ("--ecoli" not in sys.argv):
         print("No indices specified")
         print_usage()
         sys.exit()
@@ -310,15 +440,16 @@ if __name__ == "__main__":
         print("Invalid method specified")
         print_usage()
         sys.exit()
-    start_idx = sys.argv.index("--indices") + 1
-    ranges = []
-    for val in sys.argv[start_idx:]:
-        if "-" not in val:
-            ranges.append(int(val))
-        else:
-            [mn, mx] = val.split("-")
-            for ii in range(int(mn), int(mx)):
-                ranges.append(ii)
+    if "--indices" in sys.argv:
+        start_idx = sys.argv.index("--indices") + 1
+        ranges = []
+        for val in sys.argv[start_idx:]:
+            if "-" not in val:
+                ranges.append(int(val))
+            else:
+                [mn, mx] = val.split("-")
+                for ii in range(int(mn), int(mx)):
+                    ranges.append(ii)
     outfile = sys.argv[3]
     if outfile == "--indices":
         print("No destination file set")
@@ -332,6 +463,10 @@ if __name__ == "__main__":
         sys.exit()
     elif method == "--direct-damage":
         output_direct_damage(ranges, directory, outfile)
+        sys.exit()
+    elif method == "--ecoli":
+        df = ecoli_table(directory)
+        df.to_csv(outfile)
         sys.exit()
     else:
         print("Method not implemented")
